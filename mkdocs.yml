@@ -87,20 +87,6 @@ nav:
       - Installation: getting-started/installation.md
       - Configuration: getting-started/configuration.md
       - Premier lancement: getting-started/first-run.md
-  - Architecture:
-      - Vue d'ensemble: architecture/overview.md
-  - Fonctionnalités:
-      - Système de chat: features/chat-system.md
-      - Reconnaissance vocale (ASR): features/speech-recognition.md
-      - Synthèse vocale (TTS): features/text-to-speech.md
-      - OCR et traitement d'images: features/ocr.md
-      - RAG et documents: features/rag-documents.md
-      - Historique des conversations: features/conversation-history.md
-  - Dépannage:
-      - Problèmes courants: troubleshooting/common-issues.md
-      - FAQ: troubleshooting/faq.md
-  - Changelog: changelog.md
-  - Contribuer: contributing.md
 
 # Extra
 extra:

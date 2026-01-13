@@ -1,6 +1,4 @@
-# Bienvenue sur la documentation de SharingBot V3
-
-![SharingBot Logo](https://raw.githubusercontent.com/ouissambenalla988/SharingBotV3/main/apps/web/public/img/sharingan.png)
+# Documentation SharingBot V3
 
 ## 🎯 Introduction
 
@@ -64,6 +62,8 @@ Explorez la documentation complète:
 | [Tailwind CSS](https://tailwindcss.com/) | Styling de l'interface |
 | [Shadcn UI](https://ui.shadcn.com/) | Composants UI du chat |
 
+---
+
 ## 🏗️ Architecture de SharingBot
 
 L'application est organisée autour du système de chat avec ses fonctionnalités:
@@ -93,7 +93,9 @@ SharingBotV3/
 └── supabase/
     ├── migrations/              # Schéma de base de données
     └── setup-storage-and-tables.sql  # Configuration complète
-```
+---
+
+## 🚀 Commencer
 
 ## 🎓 Guides
 
@@ -112,6 +114,8 @@ SharingBot est idéal pour:
 - 📝 **Assistant d'étude** - Questionnez vos notes et cours
 - 💼 **Assistant professionnel** - Recherchez dans vos documents métier
 - 🔍 **Recherche sémantique** - Trouvez des informations précises
+
+---
 
 ## 🤝 Contribution
 
