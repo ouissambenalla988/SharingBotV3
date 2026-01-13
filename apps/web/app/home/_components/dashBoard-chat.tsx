@@ -12,16 +12,32 @@ import {
   X,
   Paperclip,
   FileText,
-  File,
+  File as FileIcon,
   Eye,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { ASRService } from "../../lib/asr-service";
 import { TTSService } from "../../lib/tts-service";
 import { OCRService } from "../../lib/ocr-service";
 import { ProfileAvatar } from '@kit/ui/profile-avatar';
 import { useUser } from '@kit/supabase/hooks/use-user';
 import { usePersonalAccountData } from '@kit/accounts/hooks/use-personal-account-data';
+
+// Import Supabase utilities for persistence
+import {
+  createConversation,
+  getConversations,
+  getMessages,
+  addMessage,
+} from '../../lib/supabase/conversations';
+import {
+  uploadDocument,
+  getAllAccessibleDocuments,
+  type Document,
+} from '../../lib/supabase/documents';
 
 // --- Sheet Mock (à remplacer par Shadcn Sheet si besoin) ---
 
@@ -92,10 +108,34 @@ interface Message {
   content: string;
   files?: AttachedFile[];
   // optional RAG sources returned by the API
-  sources?: Array<{ text: string; score?: number; length?: number }>;
+  sources?: Array<{ 
+    text: string; 
+    score?: number; 
+    length?: number;
+    pdf_name?: string;
+    pdf_url?: string;
+  }>;
+  // Metadata about PDFs used for this response
+  pdfMetadata?: Array<{ name: string; url: string }>;
 }
 
 export function DashBoardChat() {
+  const { data: userData } = useUser();
+  const userId = userData?.id;
+  const personalAccountData = usePersonalAccountData(userData?.id ?? '');
+
+  // React Speech Recognition hook
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
+  } = useSpeechRecognition();
+
+  // Conversation state
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [availableDocuments, setAvailableDocuments] = useState<Document[]>([]);
+  
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -105,8 +145,8 @@ export function DashBoardChat() {
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<number | null>(null);
   const [ocrRunningFor, setOcrRunningFor] = useState<number | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -122,8 +162,54 @@ export function DashBoardChat() {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { data: userData } = useUser();
-  const personalAccountData = usePersonalAccountData(userData?.id ?? '');
+  // Initialize conversation and load documents on mount
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (!userId) return;
+
+      try {
+        // Load available documents from Supabase
+        const docs = await getAllAccessibleDocuments(userId);
+        setAvailableDocuments(docs);
+        console.log('Loaded documents from Supabase:', docs);
+
+        // Get or create conversation
+        const conversations = await getConversations(userId);
+        let convId: string;
+
+        if (conversations.length === 0) {
+          // Create first conversation
+          const newConv = await createConversation(userId, 'Chat Session');
+          if (newConv) {
+            convId = newConv.id;
+            setCurrentConversationId(convId);
+          } else {
+            console.error('Failed to create conversation');
+            return;
+          }
+        } else {
+          // Use most recent conversation
+          convId = conversations[0]!.id;
+          setCurrentConversationId(convId);
+
+          // Load previous messages
+          const previousMessages = await getMessages(convId);
+          if (previousMessages.length > 0) {
+            const loadedMessages: Message[] = previousMessages.map((msg, idx) => ({
+              id: idx + 1,
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+            }));
+            setMessages(loadedMessages);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing chat:', error);
+      }
+    };
+
+    initializeChat();
+  }, [userId]);
 
   // Scroll automatique vers le bas when messages change
   // Scroll automatique vers le bas when messages change
@@ -162,42 +248,290 @@ export function DashBoardChat() {
     try {
       asrServiceRef.current = new ASRService();
     } catch (e) {
-      console.warn('ASRService init failed', e);
+      console.error('Failed to init ASR:', e);
       asrServiceRef.current = null;
     }
 
     return () => {
       try {
         asrServiceRef.current?.cleanup();
-        } catch (e) {
-          console.warn('focus textarea failed', e);
-        }
+      } catch (e) {
+        console.warn('ASR cleanup failed', e);
+      }
     };
+  }, []);
+
+  // Debug SpeechRecognition events
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const recognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!recognition) {
+      console.error('❌ SpeechRecognition not available in this browser');
+      return;
+    }
+
+    console.log('🔊 SpeechRecognition API détectée, testez maintenant le microphone');
   }, []);
 
   // TTS speaking state is managed per-utterance via TTSService Promise
 
-  const handleSend = async (messageTextParam?: string) => {
-    const messageText = typeof messageTextParam === 'string' ? messageTextParam : input;
-    if (!messageText.trim() && attachedFiles.length === 0) return;
+ const handleSend = async (messageTextParam?: string) => {
+  // 1️⃣ Déterminer le texte à envoyer
+  const messageText =
+    typeof messageTextParam === 'string' ? messageTextParam : input;
 
-    const userMessage: Message = {
-      id: Date.now(),
-      role: 'user',
-      content: messageText,
-      files: [...attachedFiles],
+  // snapshot local des fichiers (avant reset du state)
+  const currentFiles = [...attachedFiles];
+
+  // 2️⃣ Si pas de texte et pas de fichiers -> on ne fait rien
+  if (!messageText.trim() && currentFiles.length === 0) {
+    return;
+  }
+
+  // 3️⃣ RAG FastAPI a besoin d'au moins un PDF
+  const pdfFiles = currentFiles.filter((f) => {
+    const isPdfType = f.file?.type === 'application/pdf';
+    const isPdfName = f.name.toLowerCase().endsWith('.pdf');
+    return isPdfType || isPdfName;
+  });
+
+  // Si aucun PDF n'est attaché, utiliser les PDFs existants de la base
+  let pdfFilesToUse = pdfFiles;
+  if (pdfFiles.length === 0 && availableDocuments.length > 0) {
+    console.log('📚 Aucun PDF attaché, utilisation des PDFs de la base:', availableDocuments.length);
+    // Les PDFs de la base seront envoyés par leur file_path
+  } else if (pdfFiles.length === 0) {
+    setError('Veuillez joindre au moins un fichier PDF ou ajouter des documents dans votre bibliothèque.');
+    return;
+  }
+
+  // 4️⃣ Ajouter le message utilisateur dans l'UI
+  const userMessage: Message = {
+    id: Date.now(),
+    role: 'user',
+    content: messageText,
+    files: currentFiles,
+  };
+
+  setMessages((prev) => [...prev, userMessage]);
+  lastUserRef.current = userMessage;
+
+  // 💾 Save user message to Supabase
+  if (userId && currentConversationId) {
+    try {
+      await addMessage(currentConversationId, 'user', messageText);
+      console.log('✅ Message utilisateur sauvegardé');
+    } catch (err) {
+      console.error('❌ Erreur sauvegarde message:', err);
+    }
+  }
+
+  // 📤 Upload new PDFs to Supabase Storage
+  const uploadedDocIds: string[] = [];
+  if (userId && pdfFiles.length > 0) {
+    console.log('📤 Début upload des PDFs vers Supabase:', pdfFiles.length);
+    for (const pdfFile of pdfFiles) {
+      if (pdfFile.file) {
+        try {
+          console.log('📤 Upload en cours:', pdfFile.name);
+          // Correct parameter order: file first, then userId
+          const doc = await uploadDocument(pdfFile.file, userId, false);
+          if (doc) {
+            uploadedDocIds.push(doc.id);
+            console.log('✅ PDF uploadé vers Supabase:', pdfFile.name, 'ID:', doc.id);
+          } else {
+            console.error('❌ Upload retourné null pour:', pdfFile.name);
+          }
+        } catch (err) {
+          console.error('❌ Erreur upload PDF:', pdfFile.name, err);
+        }
+      }
+    }
+    
+    // Reload available documents
+    console.log('🔄 Rechargement des documents disponibles...');
+    const updatedDocs = await getAllAccessibleDocuments(userId);
+    setAvailableDocuments(updatedDocs);
+    console.log('✅ Documents disponibles rechargés:', updatedDocs.length);
+  }
+
+  // reset input & pièces jointes pour l'UX
+  setInput('');
+  setAttachedFiles([]);
+  setIsTyping(true);
+
+  // focus textarea
+  requestAnimationFrame(() => {
+    try {
+      const ta = textAreaRef.current;
+      if (ta) {
+        ta.focus();
+        const len = ta.value?.length ?? 0;
+        ta.setSelectionRange(len, len);
+      }
+    } catch (e) {
+      console.warn('focus textarea failed', e);
+    }
+  });
+
+  try {
+    // 5️⃣ URL de ton API FastAPI
+    const apiUrl =
+      process.env.NEXT_PUBLIC_CHATBOT_API_URL ||
+      'http://127.0.0.1:8000/ask';
+
+    console.log('🚀 Envoi vers:', apiUrl);
+    console.log('📝 Question:', messageText);
+
+    // 6️⃣ Construire le FormData pour FastAPI
+    const formData = new FormData();
+    formData.append('question', messageText);
+
+    // Tracker les PDFs envoyés pour afficher leurs liens dans les sources
+    const sentPdfs: Array<{ name: string; url: string }> = [];
+
+    // Si des nouveaux PDFs sont attachés, les utiliser
+    if (pdfFiles.length > 0) {
+      console.log('📁 Utilisation des nouveaux PDFs attachés:', pdfFiles.length);
+      pdfFiles.forEach((f) => {
+        if (f.file) {
+          formData.append('files', f.file, f.name);
+          console.log('📎 Ajout fichier:', f.name);
+          // Note: pour les nouveaux PDFs, on n'a pas encore d'URL publique
+          // L'URL sera disponible après l'upload dans Supabase
+        }
+      });
+    } 
+    // Sinon, récupérer et utiliser les PDFs stockés dans Supabase
+    else if (availableDocuments.length > 0) {
+      console.log('📚 Utilisation des PDFs de la base:', availableDocuments.length);
+      console.log('👤 User ID actuel:', userId);
+      console.log('📋 Documents disponibles:', availableDocuments.map(d => ({ 
+        name: d.filename, 
+        userId: d.user_id, 
+        isGlobal: d.is_global,
+        belongsToUser: d.user_id === userId
+      })));
+      
+      // Récupérer les PDFs depuis Supabase Storage
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      
+      for (const doc of availableDocuments) {
+        try {
+          // Construire l'URL publique du fichier
+          const fileUrl = `${supabaseUrl}/storage/v1/object/public/documents/${doc.file_path}`;
+          console.log('📥 Téléchargement PDF:', doc.filename, 'depuis', fileUrl);
+          
+          // Télécharger le fichier depuis Supabase
+          const fileResponse = await fetch(fileUrl);
+          if (fileResponse.ok) {
+            const blob = await fileResponse.blob();
+            const file = new File([blob], doc.filename, { type: 'application/pdf' });
+            formData.append('files', file, doc.filename);
+            console.log('✅ PDF ajouté:', doc.filename);
+            
+            // Tracker l'URL publique du PDF SEULEMENT si le document appartient à l'utilisateur
+            // Ne pas afficher les PDFs globaux dans les sources pour éviter la confusion
+            if (doc.user_id === userId) {
+              sentPdfs.push({
+                name: doc.filename,
+                url: fileUrl
+              });
+              console.log('📌 PDF tracké pour affichage:', doc.filename);
+            } else {
+              console.log('⏭️ PDF global ignoré pour affichage:', doc.filename);
+            }
+          } else {
+            console.error('❌ Erreur téléchargement PDF:', doc.filename, fileResponse.status);
+          }
+        } catch (err) {
+          console.error('❌ Erreur récupération PDF:', doc.filename, err);
+        }
+      }
+    }
+
+    console.log('📋 PDFs trackés avec URLs:', sentPdfs);
+
+    // 7️⃣ Appel à l'API
+    console.log('⏳ Appel API en cours...');
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    console.log('📡 Statut réponse:', response.status);
+
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      console.error('❌ Réponse non OK de /ask :', response.status, txt);
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Réponse RAG reçue du backend:', data);
+    console.log('📊 Structure de data:', {
+      hasAnswer: !!data.answer,
+      hasResponse: !!data.response,
+      hasSources: !!data.sources,
+      status: data.status
+    });
+
+    // 8️⃣ Construire le message assistant
+    const answerText = data.answer || data.response || data.message || 'No response received from API';
+    console.log('💬 Texte de réponse extrait:', answerText.substring(0, 100) + '...');
+
+    const botMessage: Message = {
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: answerText,
+      pdfMetadata: sentPdfs,
+      sources: Array.isArray(data.sources)
+        ? data.sources.map((s: any) => {
+            // Essayer de trouver l'URL du PDF correspondant
+            const sourcePdfName = s.pdf_name || s.metadata?.source || s.source;
+            const matchedPdf = sentPdfs.find(pdf => 
+              pdf.name === sourcePdfName || 
+              pdf.name.includes(sourcePdfName) || 
+              sourcePdfName?.includes(pdf.name)
+            );
+            
+            return {
+              text: typeof s.text === 'string' ? s.text : JSON.stringify(s ?? ''),
+              score: typeof s.score === 'number' ? s.score : undefined,
+              length: typeof s.length === 'number' ? s.length : undefined,
+              pdf_name: sourcePdfName || (matchedPdf?.name) || undefined,
+              pdf_url: s.pdf_url || s.metadata?.pdf_url || (matchedPdf?.url) || undefined,
+            };
+          })
+        : undefined,
     };
 
-    // Immediately show the user's message in the UI
-    setMessages((prev) => [...prev, userMessage]);
-    lastUserRef.current = userMessage;
-    // clear the input and attached files for UX
-    setInput('');
-    setAttachedFiles([]);
-    setIsTyping(true);
+    console.log('💬 Message bot créé:', {
+      id: botMessage.id,
+      contentLength: botMessage.content.length,
+      sourcesCount: botMessage.sources?.length || 0
+    });
 
-    // focus textarea and move caret to end
+    // 9️⃣ Afficher la réponse dans le chat
+    setMessages((prev) => {
+      console.log('📝 Ajout message bot au state. Messages avant:', prev.length);
+      return [...prev, botMessage];
+    });
+
+    // 💾 Save assistant message to Supabase
+    if (userId && currentConversationId) {
+      try {
+        await addMessage(currentConversationId, 'assistant', answerText);
+        console.log('✅ Réponse assistant sauvegardée');
+      } catch (err) {
+        console.error('❌ Erreur sauvegarde réponse:', err);
+      }
+    }
+
+    // scroll et focus
     requestAnimationFrame(() => {
+      scrollToBottom(false);
       try {
         const ta = textAreaRef.current;
         if (ta) {
@@ -210,85 +544,27 @@ export function DashBoardChat() {
       }
     });
 
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_CHATBOT_API_URL || 'http://127.0.0.1:8000/ask';
-      const isPlainTextApi = apiUrl.includes('/ask');
+    // TTS is now manually triggered via button - automatic TTS removed
+  } catch (err) {
+    const errorMsg =
+      err instanceof Error ? err.message : 'Failed to get response from API';
+    console.error('❌ Erreur lors de l\'appel à /ask :', err);
+    setError(errorMsg);
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: isPlainTextApi
-          ? { 'Content-Type': 'text/plain' }
-          : { 'Content-Type': 'application/json' },
-        body: isPlainTextApi ? userMessage.content : JSON.stringify({ message: userMessage.content, files: attachedFiles }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const botMessage: Message = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: data.answer || data.response || 'No response received from API',
-        sources: Array.isArray(data.sources)
-          ? data.sources.map((s: unknown) => {
-              if (typeof s === 'string') return { text: s, score: undefined };
-              if (s && typeof s === 'object') {
-                const obj = s as Record<string, unknown>;
-                const text = typeof obj['text'] === 'string' ? (obj['text'] as string) : JSON.stringify(obj);
-                const score = typeof obj['score'] === 'number' ? (obj['score'] as number) : undefined;
-                return { text, score };
-              }
-              return { text: String(s), score: undefined };
-            })
-          : undefined,
-      };
-      setMessages((prev) => [...prev, botMessage]);
-
-      // ensure view is positioned on the new assistant response (jump)
-      requestAnimationFrame(() => {
-        scrollToBottom(false);
-        try {
-          const ta = textAreaRef.current;
-          if (ta) {
-            ta.focus();
-            const len = ta.value?.length ?? 0;
-            ta.setSelectionRange(len, len);
-          }
-        } catch (e) {
-          console.warn('focus textarea failed', e);
-        }
-      });
-
-      // Play TTS for assistant response (after we have the message)
+    requestAnimationFrame(() => {
+      scrollToBottom(false);
       try {
-        setIsSpeaking(true);
-        TTSService.speakText(botMessage.content)
-          .catch(() => {})
-          .finally(() => setIsSpeaking(false));
+        textAreaRef.current?.focus();
       } catch (e) {
-        console.warn('TTS error', e);
-        setIsSpeaking(false);
+        console.warn('focus textarea failed', e);
       }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to get response from API';
-      setError(errorMsg);
-      // ensure user sees the alert and the input is focused so they can retry
-      requestAnimationFrame(() => {
-        scrollToBottom(false);
-        try {
-          textAreaRef.current?.focus();
-        } catch (e) {
-          console.warn('focus textarea failed', e);
-        }
-      });
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-
+    });
+  } finally {
+    console.log('🏁 Fin du traitement, isTyping = false');
+    setIsTyping(false);
+  }
+};
+  
 
   // Start/stop voice recording using ASRService
   const handleVoiceRecord = async () => {
@@ -302,32 +578,71 @@ export function DashBoardChat() {
       setIsSpeaking(false);
       return;
     }
-    if (!asrServiceRef.current) {
-      setError('Service vocal non initialisé');
+
+    // Check browser support
+    if (!browserSupportsSpeechRecognition) {
+      setError('Votre navigateur ne supporte pas la reconnaissance vocale. Utilisez Chrome ou Edge.');
       return;
     }
 
-    if (!isRecording) {
+    if (!listening) {
+      // Start recording
       try {
-        await asrServiceRef.current.startRecording();
-        setIsRecording(true);
+        console.log('🎤 Démarrage de l\'enregistrement vocal...');
+        
+        // Test microphone permission first
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(() => {
+            console.log('✅ Permission micro accordée');
+            resetTranscript();
+            SpeechRecognition.startListening({ 
+              language: 'fr-FR', 
+              continuous: true,
+              interimResults: true
+            });
+          })
+          .catch((err) => {
+            console.error('❌ Permission micro refusée:', err);
+            setError(`Erreur micro: ${err.message}. Vérifiez les permissions dans les paramètres du navigateur.`);
+          });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        console.error('❌ Erreur démarrage micro:', msg);
         setError(msg || "Erreur d'enregistrement");
       }
     } else {
+      // Stop recording - transcript will be handled by useEffect
       try {
-        setIsRecording(false);
-        const transcription = await asrServiceRef.current.stopAndTranscribe();
-        if (transcription && transcription.text) {
-          setInput((prev) => (prev ? `${prev} ${transcription.text}` : transcription.text));
-        }
+        console.log('🛑 Arrêt de l\'enregistrement...');
+        SpeechRecognition.stopListening();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        console.error('❌ Erreur arrêt micro:', msg);
         setError(msg || 'Erreur lors de la transcription');
       }
     }
   };
+
+  // Auto-update input when transcript changes after listening stops
+  useEffect(() => {
+    console.log('🔍 useEffect transcript:', {
+      listening,
+      transcript,
+      transcriptLength: transcript?.length,
+      hasTranscript: !!transcript,
+      trimmed: transcript?.trim()
+    });
+    
+    // Only process if we just stopped listening and have a transcript
+    if (!listening && transcript && transcript.trim()) {
+      console.log('📝 Transcription reçue:', transcript);
+      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      console.log('✅ Texte ajouté au champ de saisie');
+      // Don't reset here - will be reset on next start
+    } else if (!listening && (!transcript || !transcript.trim())) {
+      console.warn('⚠️ Arrêté mais pas de transcript:', transcript);
+    }
+  }, [listening, transcript]);
 
   // Auto-clear error after a few seconds
   useEffect(() => {
@@ -534,7 +849,43 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       return <Image src={logo} alt="" width={14} height={14} />;
     if (type === "application")
       return <FileText className="w-4 h-4 text-red-500" />;
-    return <File className="w-4 h-4 text-gray-500 dark:text-gray-400" />;
+    return <FileIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />;
+  };
+
+  // Handle TTS playback for individual messages
+  const handleTTSToggle = async (messageId: number, content: string) => {
+    // If this message is already playing, stop it
+    if (playingMessageId === messageId) {
+      try {
+        TTSService.stopSpeaking();
+        setPlayingMessageId(null);
+        setIsSpeaking(false);
+      } catch (e) {
+        console.warn('TTS stop error', e);
+      }
+      return;
+    }
+
+    // Stop any other playing message first
+    if (playingMessageId !== null) {
+      try {
+        TTSService.stopSpeaking();
+      } catch (e) {
+        console.warn('TTS stop error', e);
+      }
+    }
+
+    // Start playing this message
+    try {
+      setPlayingMessageId(messageId);
+      setIsSpeaking(true);
+      await TTSService.speakText(content);
+    } catch (e) {
+      console.warn('TTS playback error', e);
+    } finally {
+      setPlayingMessageId(null);
+      setIsSpeaking(false);
+    }
   };
 
   const MessageBubble = ({ message }: { message: Message }) => (
@@ -584,20 +935,94 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           </p>
 
           {message.sources && message.sources.length > 0 && (
-            <div className="mt-2 space-y-2">
-              {message.sources.map((s, i) => (
-                <div key={i} className="flex items-start gap-2 bg-white/50 dark:bg-gray-900/30 rounded-md p-2 border border-gray-100 dark:border-gray-800">
-                  <div className="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-medium">
-                    {s.score ? s.score.toFixed(3) : "-"}
+            <>
+              <div className="mt-2 space-y-2">
+                {message.sources.map((s, i) => (
+                  <div key={i} className="flex flex-col gap-1 bg-white/50 dark:bg-gray-900/30 rounded-md p-2 border border-gray-100 dark:border-gray-800">
+                    <div className="flex items-start gap-2">
+                      <div className="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-medium">
+                        {s.score ? s.score.toFixed(3) : "-"}
+                      </div>
+                      <div className="flex-1 text-xs text-gray-600 dark:text-gray-300 leading-snug break-words">
+                        {s.text}
+                      </div>
+                      {s.pdf_url && (
+                        <a 
+                          href={s.pdf_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 p-1 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+                          title={`Ouvrir ${s.pdf_name || 'PDF'}`}
+                        >
+                          <FileIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
+                        </a>
+                      )}
+                    </div>
+                    {s.pdf_name && (
+                      <div className="flex items-center gap-1.5 text-xs ml-[52px]">
+                        <FileText className="w-3 h-3 text-gray-400" />
+                        {s.pdf_url ? (
+                          <a 
+                            href={s.pdf_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                          >
+                            {s.pdf_name}
+                          </a>
+                        ) : (
+                          <span className="text-gray-500 dark:text-gray-400 font-medium">{s.pdf_name}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300 leading-snug max-w-[60ch] break-words">
-                    {s.text}
+                ))}
+              </div>
+
+              {/* Afficher tous les PDFs utilisés pour cette réponse */}
+              {message.pdfMetadata && message.pdfMetadata.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">📚 Sources PDFs:</span>
+                    {message.pdfMetadata.map((pdf, idx) => (
+                      <a
+                        key={idx}
+                        href={pdf.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+                        title={`Ouvrir ${pdf.name}`}
+                      >
+                        <FileIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
+                        <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">{pdf.name}</span>
+                      </a>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
+        {message.role === "assistant" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleTTSToggle(message.id, message.content)}
+            className={`mt-2 h-8 w-8 rounded-full transition-all ${
+              playingMessageId === message.id
+                ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/60"
+                : "text-gray-500 dark:text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+            }`}
+            title={playingMessageId === message.id ? "Stop speaking" : "Read aloud"}
+            aria-label={playingMessageId === message.id ? "Stop speaking" : "Read aloud"}
+          >
+            {playingMessageId === message.id ? (
+              <VolumeX className="h-4 w-4 animate-pulse" />
+            ) : (
+              <Volume2 className="h-4 w-4" />
+            )}
+          </Button>
+        )}
       </div>
       {message.role === "user" && (
         <div className="flex-shrink-0">
@@ -759,7 +1184,7 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 className="hidden"
               />
               <Textarea
-                ref={(el: HTMLTextAreaElement | null) => (textAreaRef.current = el)}
+                ref={textAreaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -771,29 +1196,46 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 placeholder="Écrire un message…"
                 className="flex-1 resize-none min-h-12 max-h-60 border-none bg-transparent text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus-visible:ring-0"
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleVoiceRecord}
-                disabled={isSpeaking}
-                aria-pressed={isRecording}
-                className={`h-9 w-9 rounded-full transition-colors flex items-center justify-center ${
-                  isRecording
-                    ? "text-red-600 bg-red-50 dark:bg-red-900/30"
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleVoiceRecord}
+                  disabled={isSpeaking}
+                  aria-pressed={listening}
+                  className={`h-9 w-9 rounded-full transition-colors flex items-center justify-center ${
+                    listening
+                      ? "text-red-600 bg-red-50 dark:bg-red-900/30 animate-pulse"
                     : "text-gray-500 dark:text-gray-300 hover:text-blue-500"
                 }`}
-              >
-                {isRecording ? (
-                  <div className="relative">
-                    <Mic className="h-5 w-5 text-red-600" />
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                >
+                  {listening ? (
+                    <div className="relative">
+                      <Mic className="h-5 w-5 text-red-600" />
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    </div>
+                  ) : (
+                    <Mic className="h-5 w-5" />
+                  )}
+                </Button>
+                
+                {/* Recording indicator */}
+                {listening && (
+                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-500 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg flex flex-col items-center gap-1 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      🗣️ Parlez maintenant...
+                    </div>
+                    {transcript && (
+                      <div className="text-[10px] opacity-90 max-w-xs truncate bg-red-600/50 px-2 py-0.5 rounded">
+                        "{transcript}"
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <Mic className="h-5 w-5" />
                 )}
-              </Button>
+              </div>
               <Button
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={
                   (!input.trim() && attachedFiles.length === 0) || isTyping
                 }
@@ -862,7 +1304,7 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                 </div>
               ) : (
                 <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200">
-                  <File className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+                  <FileIcon className="w-10 h-10 text-gray-500 mx-auto mb-3" />
                   <p className="text-lg font-medium text-gray-800">
                     Fichier non prévisualisable : {fileToPreview.name}
                   </p>
