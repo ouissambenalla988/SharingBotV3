@@ -1,34 +1,29 @@
 # Documentation SharingBot V3
 
-## 🎯 Introduction
+## 🎯 À propos
 
-**SharingBot V3** est un assistant IA conversationnel intelligent basé sur Next.js 15 et Supabase. Il combine chat en temps réel, reconnaissance vocale, synthèse vocale, OCR et système RAG pour interroger vos documents.
+**SharingBot V3** est un assistant IA conversationnel qui combine chat intelligent, reconnaissance vocale, synthèse vocale, OCR et système RAG pour interroger vos documents PDF.
 
-### ✨ Fonctionnalités principales
+### ✨ Fonctionnalités
 
-- 🤖 **Chat IA conversationnel** - Conversations intelligentes avec historique persistant
-- 🎙️ **Reconnaissance vocale (ASR)** - Dictez vos messages vocalement
-- 🔊 **Synthèse vocale (TTS)** - Écoutez les réponses du bot
-- 📄 **Système RAG** - Uploadez des PDFs et interrogez leur contenu
-- 🖼️ **OCR intégré** - Extrayez du texte depuis des images
-- 💾 **Historique persistant** - Vos conversations sont automatiquement sauvegardées
-- 📁 **Gestion de conversations** - Créez, naviguez et supprimez vos conversations
-- 🔍 **Recherche vectorielle** - Recherche sémantique dans vos documents
-- 🌍 **Multilingue** - Détection automatique de la langue
+- 🤖 **Chat IA** - Conversations intelligentes avec historique
+- 🎙️ **Reconnaissance vocale** - Dictez vos messages
+- 🔊 **Synthèse vocale** - Écoutez les réponses
+- 📄 **RAG** - Interrogez vos documents PDF
+- 🖼️ **OCR** - Extrayez du texte des images
+- 💾 **Historique** - Sauvegarde automatique des conversations
 
 ## 🚀 Démarrage rapide
 
-Pour commencer rapidement avec SharingBot V3:
-
 ```bash
-# 1. Cloner le repository
+# 1. Cloner le projet
 git clone https://github.com/ouissambenalla988/SharingBotV3.git
 cd SharingBotV3
 
 # 2. Installer les dépendances
 pnpm install
 
-# 3. Démarrer Supabase (Docker requis)
+# 3. Démarrer Supabase
 pnpm run supabase:web:start
 
 # 4. Lancer l'application
@@ -37,67 +32,35 @@ pnpm run dev
 
 L'application sera disponible sur [http://localhost:3000](http://localhost:3000)
 
-## 📚 Documentation
+## 📚 Guide de démarrage
 
-Explorez la documentation complète:
+Pour une installation détaillée, suivez ces étapes :
 
-- **[Guide de démarrage](getting-started/installation.md)** - Installation et configuration
-- **[Architecture](architecture/overview.md)** - Comprendre la structure du projet
-- **[Fonctionnalités](features/chat-system.md)** - Guide détaillé des fonctionnalités
-- **[API Reference](api/overview.md)** - Documentation des APIs
-- **[Guides de développement](guides/add-feature.md)** - Tutoriels pour développeurs
+1. **[Installation](getting-started/installation.md)** - Prérequis et installation complète
+2. **[Configuration](getting-started/configuration.md)** - Configuration de l'environnement
+3. **[Premier lancement](getting-started/first-run.md)** - Premiers pas avec SharingBot
 
-## 🛠️ Stack technologique
+## 🛠️ Technologies
 
-| Technologie | Usage dans SharingBot |
-|------------|----------------------|
-| [Next.js 15](https://nextjs.org/) | Framework principal, routing et API routes |
-| [Supabase](https://supabase.com/) | Auth, base de données PostgreSQL, storage |
-| [React Speech Recognition](https://www.npmjs.com/package/react-speech-recognition) | Reconnaissance vocale (ASR) |
-| [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) | Synthèse vocale (TTS) |
-| [Google Cloud Vision](https://cloud.google.com/vision) | OCR pour extraction de texte |
-| [Hugging Face Inference](https://huggingface.co/inference-api) | Modèle de langage pour le chat |
-| [pgvector](https://github.com/pgvector/pgvector) | Recherche vectorielle dans PostgreSQL |
-| [TypeScript](https://www.typescriptlang.org/) | Typage strict pour tout le code |
-| [Tailwind CSS](https://tailwindcss.com/) | Styling de l'interface |
-| [Shadcn UI](https://ui.shadcn.com/) | Composants UI du chat |
+- **Next.js 15** - Framework React
+- **Supabase** - Base de données et authentification
+- **TypeScript** - Typage strict
+- **Tailwind CSS** - Styling
+- **React Speech Recognition** - ASR
+- **Web Speech API** - TTS
+- **Google Cloud Vision** - OCR
+- **Hugging Face** - Modèle de langage
+- **pgvector** - Recherche vectorielle
 
----
+## 🔗 Liens
 
-## 🏗️ Architecture de SharingBot
+- [GitHub](https://github.com/ouissambenalla988/SharingBotV3)
+- [Issues](https://github.com/ouissambenalla988/SharingBotV3/issues)
+- [Discussions](https://github.com/ouissambenalla988/SharingBotV3/discussions)
 
-L'application est organisée autour du système de chat avec ses fonctionnalités:
+## 📄 Licence
 
-```
-SharingBotV3/
-├── apps/web/app/
-│   ├── home/                     # Application SharingBot
-│   │   ├── _components/
-│   │   │   ├── dashBoard-chat.tsx        # Composant principal du chat
-│   │   │   ├── ConversationSidebar.tsx   # Historique des conversations
-│   │   │   └── ChatWithHistory.tsx       # Wrapper avec persistance
-│   │   ├── hooks/
-│   │   │   └── useConversationPersistence.ts  # Hook de persistance
-│   │   └── page.tsx
-│   ├── lib/
-│   │   ├── asr-service.ts       # Service de reconnaissance vocale
-│   │   ├── tts-service.ts       # Service de synthèse vocale
-│   │   ├── ocr-service.ts       # Service OCR
-│   │   ├── language-detector.ts # Détection de langue
-│   │   └── supabase/
-│   │       ├── conversations.ts # CRUD conversations/messages
-│   │       └── documents.ts     # Gestion documents et RAG
-│   ├── types/
-│   │   └── database.types.ts    # Types TypeScript Supabase
-│   └── api/                     # Routes API (chat, embeddings)
-└── supabase/
-    ├── migrations/              # Schéma de base de données
-    └── setup-storage-and-tables.sql  # Configuration complète
----
-
-## 🚀 Commencer
-
-## 🎓 Guides
+MIT License - Utilisation libre pour projets personnels et commerciaux.
 
 - [Installation et configuration](getting-started/installation.md)
 - [Premier lancement](getting-started/first-run.md)
