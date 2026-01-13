@@ -12,14 +12,13 @@ formats:
   - pdf
   - epub
 
-# Python requirements
-python:
-  version: "3.11"
-  install:
-    - requirements: requirements.txt
-
 # Build configuration
 build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
+
+# Python requirements
+python:
+  install:
+    - requirements: requirements.txt
