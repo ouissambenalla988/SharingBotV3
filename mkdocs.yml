@@ -1,0 +1,140 @@
+site_name: SharingBot V3 Documentation
+site_description: Documentation complète pour SharingBot V3 - Assistant IA avec reconnaissance vocale, RAG et persistance
+site_author: MakerKit Team
+site_url: https://sharingbotv3.readthedocs.io
+
+# Repository
+repo_name: ouissambenalla988/SharingBotV3
+repo_url: https://github.com/ouissambenalla988/SharingBotV3
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024-2026 MakerKit
+
+# Configuration
+theme:
+  name: material
+  language: fr
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Passer en mode sombre
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Passer en mode clair
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - footnotes
+  - attr_list
+  - md_in_html
+  - def_list
+  - toc:
+      permalink: true
+
+# Plugins
+plugins:
+  - search:
+      lang: fr
+  - minify:
+      minify_html: true
+
+# Navigation
+nav:
+  - Accueil: index.md
+  - Guide de démarrage:
+      - Installation: getting-started/installation.md
+      - Configuration: getting-started/configuration.md
+      - Premier lancement: getting-started/first-run.md
+  - Architecture:
+      - Vue d'ensemble: architecture/overview.md
+      - Structure du projet: architecture/project-structure.md
+      - Base de données: architecture/database.md
+      - Monorepo Turborepo: architecture/monorepo.md
+  - Fonctionnalités:
+      - Système de chat: features/chat-system.md
+      - Reconnaissance vocale (ASR): features/speech-recognition.md
+      - Synthèse vocale (TTS): features/text-to-speech.md
+      - OCR et traitement d'images: features/ocr.md
+      - RAG et documents: features/rag-documents.md
+      - Historique des conversations: features/conversation-history.md
+      - Gestion des utilisateurs: features/user-management.md
+  - API:
+      - Vue d'ensemble: api/overview.md
+      - Routes de chat: api/chat-routes.md
+      - Routes de documents: api/document-routes.md
+      - Authentification: api/authentication.md
+  - Guides de développement:
+      - Ajouter une fonctionnalité: guides/add-feature.md
+      - Créer un composant: guides/create-component.md
+      - Travailler avec Supabase: guides/working-with-supabase.md
+      - Tests: guides/testing.md
+      - Déploiement: guides/deployment.md
+  - Référence:
+      - Configuration: reference/configuration.md
+      - Variables d'environnement: reference/environment-variables.md
+      - Scripts disponibles: reference/scripts.md
+      - Types TypeScript: reference/typescript-types.md
+  - Dépannage:
+      - Problèmes courants: troubleshooting/common-issues.md
+      - FAQ: troubleshooting/faq.md
+  - Changelog: changelog.md
+  - Contribuer: contributing.md
+
+# Extra
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ouissambenalla988/SharingBotV3
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/makerkit
+  version:
+    provider: mike
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX
+
+# CSS personnalisé
+extra_css:
+  - stylesheets/extra.css
