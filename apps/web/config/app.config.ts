@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 const production = process.env.NODE_ENV === 'production';
 
+// Safe default theme colors (always different)
+const DEFAULT_THEME_COLOR = '#ffffff'; // light theme
+const DEFAULT_THEME_COLOR_DARK = '#0f0f0f'; // dark theme
+
 const AppConfigSchema = z
   .object({
     name: z
@@ -35,8 +39,12 @@ const AppConfigSchema = z
       .default('en'),
     theme: z.enum(['light', 'dark', 'system']),
     production: z.boolean(),
-    themeColor: z.string(),
-    themeColorDark: z.string(),
+    themeColor: z.string({
+      description: `Theme color for light mode. Defaults to ${DEFAULT_THEME_COLOR}`,
+    }),
+    themeColorDark: z.string({
+      description: `Theme color for dark mode. Defaults to ${DEFAULT_THEME_COLOR_DARK}`,
+    }),
   })
   .refine(
     (schema) => {
@@ -70,8 +78,8 @@ const appConfig = AppConfigSchema.parse({
   url: process.env.NEXT_PUBLIC_SITE_URL,
   locale: process.env.NEXT_PUBLIC_DEFAULT_LOCALE,
   theme: process.env.NEXT_PUBLIC_DEFAULT_THEME_MODE,
-  themeColor: process.env.NEXT_PUBLIC_THEME_COLOR,
-  themeColorDark: process.env.NEXT_PUBLIC_THEME_COLOR_DARK,
+  themeColor: process.env.NEXT_PUBLIC_THEME_COLOR || DEFAULT_THEME_COLOR,
+  themeColorDark: process.env.NEXT_PUBLIC_THEME_COLOR_DARK || DEFAULT_THEME_COLOR_DARK,
   production,
 });
 

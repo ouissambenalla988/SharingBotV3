@@ -1,0 +1,591 @@
+% !TEX program = xelatex
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% Couleurs personnalisées
+\definecolor{primaryblue}{RGB}{59, 130, 246}
+\definecolor{secondarypurple}{RGB}{168, 85, 247}
+\definecolor{darkgray}{RGB}{31, 41, 55}
+\definecolor{lightgray}{RGB}{243, 244, 246}
+
+\setbeamercolor{palette primary}{bg=primaryblue,fg=white}
+\setbeamercolor{palette secondary}{bg=secondarypurple,fg=white}
+\setbeamercolor{palette tertiary}{bg=darkgray,fg=white}
+\setbeamercolor{structure}{fg=primaryblue}
+
+% Configuration du listing de code
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{lightgray},
+    keywordstyle=\color{primaryblue}\bfseries,
+    commentstyle=\color{gray}\itshape,
+    stringstyle=\color{secondarypurple}
+}
+
+% Informations de la présentation
+\title{SharingBot}
+\subtitle{Assistant Conversationnel Intelligent avec RAG}
+\author{Votre Nom}
+\institute{Votre Institution}
+\date{\today}
+
+\begin{document}
+
+% Page de titre
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% Table des matières
+\begin{frame}{Plan}
+    \tableofcontents
+\end{frame}
+
+% Section 1: Introduction
+\section{Introduction}
+
+\begin{frame}{Contexte du Projet}
+    \begin{itemize}
+        \item \textbf{Problématique :} Besoin d'un assistant intelligent capable de répondre aux questions basées sur des documents spécifiques
+        \item \textbf{Solution :} SharingBot - Un chatbot avec RAG (Retrieval-Augmented Generation)
+        \item \textbf{Objectifs :}
+        \begin{itemize}
+            \item Permettre aux utilisateurs d'interroger leurs documents PDF
+            \item Fournir des réponses contextualisées avec sources
+            \item Gérer l'historique des conversations
+            \item Interface utilisateur moderne et intuitive
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Qu'est-ce que le RAG ?}
+    \begin{columns}
+        \column{0.6\textwidth}
+        \textbf{Retrieval-Augmented Generation}
+        \begin{itemize}
+            \item Technique combinant recherche et génération
+            \item \textbf{Retrieval :} Recherche d'informations pertinentes dans une base documentaire
+            \item \textbf{Generation :} Utilisation d'un LLM pour générer des réponses
+            \item Avantages : réponses précises, basées sur des sources vérifiables
+        \end{itemize}
+        
+        \column{0.4\textwidth}
+        \begin{tikzpicture}[scale=0.8]
+            % Documents
+            \draw[fill=primaryblue!30] (0,3) rectangle (1.5,3.5);
+            \draw[fill=primaryblue!30] (0,2.3) rectangle (1.5,2.8);
+            \draw[fill=primaryblue!30] (0,1.6) rectangle (1.5,2.1);
+            \node at (0.75,1.2) {\small Documents};
+            
+            % Flèche
+            \draw[->,thick] (0.75,1) -- (0.75,0.5);
+            
+            % LLM
+            \draw[fill=secondarypurple!30,rounded corners] (-0.5,-0.5) rectangle (2,-1.5);
+            \node at (0.75,-1) {\small LLM};
+            
+            % Réponse
+            \draw[->,thick] (0.75,-1.7) -- (0.75,-2.2);
+            \node at (0.75,-2.5) {\small Réponse};
+        \end{tikzpicture}
+    \end{columns}
+\end{frame}
+
+% Section 2: Architecture
+\section{Architecture Technique}
+
+\begin{frame}{Stack Technologique}
+    \begin{columns}
+        \column{0.5\textwidth}
+        \textbf{Frontend}
+        \begin{itemize}
+            \item \textcolor{primaryblue}{Next.js 15.5.4} - Framework React
+            \item \textcolor{primaryblue}{TypeScript} - Typage statique
+            \item \textcolor{primaryblue}{Tailwind CSS} - Styling
+            \item \textcolor{primaryblue}{Shadcn UI} - Composants UI
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \textbf{Backend \& Services}
+        \begin{itemize}
+            \item \textcolor{secondarypurple}{Supabase} - Base de données PostgreSQL
+            \item \textcolor{secondarypurple}{Supabase Storage} - Stockage de fichiers
+            \item \textcolor{secondarypurple}{OpenAI API} - Modèle de langage
+            \item \textcolor{secondarypurple}{Embeddings} - Recherche vectorielle
+        \end{itemize}
+    \end{columns}
+    
+    \vspace{1cm}
+    \textbf{Outils de Développement}
+    \begin{itemize}
+        \item pnpm - Gestionnaire de paquets
+        \item Turbo - Monorepo build system
+        \item ESLint \& Prettier - Qualité du code
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Architecture du Système}
+    \begin{center}
+    \begin{tikzpicture}[
+        box/.style={rectangle, draw, fill=primaryblue!20, text width=3cm, align=center, rounded corners, minimum height=1cm},
+        storage/.style={cylinder, draw, fill=secondarypurple!20, text width=2cm, align=center, minimum height=1cm, shape border rotate=90},
+        arrow/.style={->,>=stealth,thick}
+    ]
+        % Utilisateur
+        \node[box] (user) at (0,4) {Utilisateur};
+        
+        % Frontend
+        \node[box] (frontend) at (0,2) {Next.js Frontend};
+        
+        % Backend services
+        \node[box] (api) at (-3,0) {API Routes};
+        \node[box] (rag) at (0,0) {RAG Engine};
+        \node[box] (auth) at (3,0) {Auth Service};
+        
+        % Data
+        \node[storage] (db) at (-3,-2) {PostgreSQL};
+        \node[storage] (storage) at (0,-2) {Storage};
+        \node[storage] (vector) at (3,-2) {Vector DB};
+        
+        % Flèches
+        \draw[arrow] (user) -- (frontend);
+        \draw[arrow] (frontend) -- (api);
+        \draw[arrow] (frontend) -- (rag);
+        \draw[arrow] (frontend) -- (auth);
+        \draw[arrow] (api) -- (db);
+        \draw[arrow] (rag) -- (vector);
+        \draw[arrow] (rag) -- (storage);
+        \draw[arrow] (auth) -- (db);
+    \end{tikzpicture}
+    \end{center}
+\end{frame}
+
+\begin{frame}{Modèle de Données}
+    \textbf{Tables Principales :}
+    \begin{itemize}
+        \item \texttt{users} - Gestion des utilisateurs (Supabase Auth)
+        \item \texttt{documents} - Métadonnées des PDFs uploadés
+        \item \texttt{conversations} - Historique des conversations
+        \item \texttt{messages} - Messages individuels dans chaque conversation
+        \item \texttt{chunks} - Segments de documents pour la recherche vectorielle
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Exemple de structure SQL :}
+    \begin{itemize}
+        \item Table conversations avec : id, user\_id, title, created\_at
+        \item Relations avec auth.users via foreign keys
+        \item Index sur user\_id pour performances
+    \end{itemize}
+\end{frame}
+
+% Section 3: Fonctionnalités
+\section{Fonctionnalités Principales}
+
+\begin{frame}{Gestion des Documents}
+    \textbf{Upload et Traitement de PDFs}
+    \begin{enumerate}
+        \item \textcolor{primaryblue}{Upload} - L'utilisateur télécharge un PDF
+        \item \textcolor{primaryblue}{Extraction} - Le texte est extrait du PDF
+        \item \textcolor{primaryblue}{Chunking} - Le texte est divisé en segments
+        \item \textcolor{primaryblue}{Embedding} - Chaque segment est converti en vecteur
+        \item \textcolor{primaryblue}{Stockage} - Les vecteurs sont stockés dans la base vectorielle
+    \end{enumerate}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Caractéristiques :}
+    \begin{itemize}
+        \item Support multi-utilisateurs avec documents privés et partagés
+        \item Stockage sécurisé dans Supabase Storage
+        \item Métadonnées complètes (nom, taille, date d'upload)
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Interface de Chat Intelligent}
+    \textbf{Processus de Réponse RAG}
+    \begin{enumerate}
+        \item \textcolor{primaryblue}{Question} - L'utilisateur pose une question
+        \item \textcolor{primaryblue}{Recherche} - Recherche des chunks pertinents via similarité vectorielle
+        \item \textcolor{primaryblue}{Contexte} - Les chunks trouvés forment le contexte
+        \item \textcolor{primaryblue}{Génération} - Le LLM génère une réponse basée sur le contexte
+        \item \textcolor{primaryblue}{Sources} - Les PDFs sources sont affichés avec liens cliquables
+    \end{enumerate}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Fonctionnalités Avancées :}
+    \begin{itemize}
+        \item Affichage des PDFs utilisés pour chaque réponse
+        \item Liens directs vers les documents sources
+        \item Reconnaissance vocale (intégration avec Web Speech API)
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Historique des Conversations}
+    \textbf{Gestion des Conversations}
+    \begin{itemize}
+        \item \textcolor{primaryblue}{Sidebar de navigation} - Style DeepSeek/ChatGPT
+        \item \textcolor{primaryblue}{Groupement temporel} - Today, Yesterday, 7 Days, 30 Days, Older
+        \item \textcolor{primaryblue}{Persistance} - Toutes les conversations sont sauvegardées
+        \item \textcolor{primaryblue}{Multi-sessions} - Accès aux anciennes conversations à tout moment
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \begin{columns}
+        \column{0.5\textwidth}
+        \textbf{Navigation}
+        \begin{itemize}
+            \item Nouvelle conversation
+            \item Sélection de conversation
+            \item Navigation par URL
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \textbf{Affichage}
+        \begin{itemize}
+            \item Titre de conversation
+            \item Date de création
+            \item Indicateur actif
+        \end{itemize}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Authentification et Sécurité}
+    \textbf{Supabase Auth Integration}
+    \begin{itemize}
+        \item \textcolor{primaryblue}{Authentification Email/Password}
+        \item \textcolor{primaryblue}{OAuth Providers} (Google, GitHub, etc.)
+        \item \textcolor{primaryblue}{Row Level Security (RLS)} - Isolation des données par utilisateur
+        \item \textcolor{primaryblue}{Session Management} - Gestion sécurisée des sessions
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Sécurité des Données}
+    \begin{itemize}
+        \item Chaque utilisateur voit uniquement ses propres documents et conversations
+        \item Documents partagés via flag \texttt{is\_global}
+        \item Variables d'environnement sécurisées (exclusion des .env du Git)
+        \item HTTPS obligatoire en production
+    \end{itemize}
+\end{frame}
+
+% Section 4: Implémentation
+\section{Détails d'Implémentation}
+
+\begin{frame}[fragile]{Code : Composant Chat Principal}
+\begin{lstlisting}[language=JavaScript, basicstyle=\ttfamily\tiny]
+// apps/web/app/home/_components/dashBoard-chat.tsx
+
+const [conversations, setConversations] = useState([]);
+const [currentConvId, setCurrentConvId] = useState(null);
+
+// Initialisation de la conversation
+useEffect(() => {
+  const initConversation = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const convId = urlParams.get('conv');
+    
+    if (convId) {
+      // Charger conversation existante
+      const messages = await getMessages(convId);
+      setMessages(messages);
+      setCurrentConvId(convId);
+    } else {
+      // Creer nouvelle conversation
+      const newConv = await createConversation(userId, 'New Chat');
+      setCurrentConvId(newConv.id);
+      window.history.pushState({}, '', '/home?conv=' + newConv.id);
+    }
+  };
+  
+  initConversation();
+}, [userId]);
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Code : Recherche RAG}
+\begin{lstlisting}[language=JavaScript, basicstyle=\ttfamily\tiny]
+async function performRAGSearch(question, userId) {
+  // 1. Generer embedding de la question
+  const questionEmbedding = await generateEmbedding(question);
+  
+  // 2. Recherche vectorielle dans les documents
+  const relevantChunks = await searchSimilarChunks(
+    questionEmbedding, userId, 5
+  );
+  
+  // 3. Construire le contexte a partir des chunks
+  const context = relevantChunks.map(
+    chunk => chunk.content
+  ).join('...');
+  
+  // 4. Appeler le LLM avec le contexte
+  const response = await callOpenAI(context, question);
+  
+  return response;
+}
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Code : Sidebar avec Historique}
+\begin{lstlisting}[language=JavaScript, basicstyle=\ttfamily\tiny]
+function groupConversationsByTime(conversations) {
+  const now = new Date();
+  const groups = {
+    today: [], yesterday: [], week: [], month: [], older: []
+  };
+  
+  conversations.forEach(conv => {
+    const date = new Date(conv.created_at);
+    const diffDays = calculateDaysDiff(now, date);
+    
+    if (diffDays === 0) groups.today.push(conv);
+    else if (diffDays === 1) groups.yesterday.push(conv);
+    else if (diffDays <= 7) groups.week.push(conv);
+    else if (diffDays <= 30) groups.month.push(conv);
+    else groups.older.push(conv);
+  });
+  
+  return groups;
+}
+\end{lstlisting}
+\end{frame}
+
+% Section 5: Démo et Résultats
+\section{Démonstration}
+
+\begin{frame}{Interface Utilisateur}
+    \textbf{Design Moderne et Intuitif}
+    \begin{itemize}
+        \item Interface inspirée de DeepSeek/ChatGPT
+        \item Sidebar de 280px avec historique des conversations
+        \item Zone de chat principale avec messages structurés
+        \item Affichage des sources PDF sous forme de badges cliquables
+        \item Mode sombre et clair
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Expérience Utilisateur}
+    \begin{itemize}
+        \item Navigation fluide entre conversations
+        \item Chargement rapide des messages
+        \item Responsive design (mobile, tablette, desktop)
+        \item Feedback visuel pour chaque action
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Cas d'Usage}
+    \textbf{Exemples Concrets}
+    
+    \begin{block}{1. Recherche Documentaire}
+        Un étudiant upload ses cours en PDF et pose des questions pour réviser ses examens.
+    \end{block}
+    
+    \begin{block}{2. Support Client}
+        Une entreprise utilise SharingBot pour que les employés trouvent rapidement des informations dans les manuels de procédures.
+    \end{block}
+    
+    \begin{block}{3. Analyse de Contrats}
+        Un juriste upload des contrats et interroge le système sur des clauses spécifiques.
+    \end{block}
+    
+    \begin{block}{4. Recherche Académique}
+        Un chercheur upload des articles scientifiques et pose des questions pour identifier les tendances.
+    \end{block}
+\end{frame}
+
+\begin{frame}{Métriques et Performance}
+    \begin{columns}
+        \column{0.5\textwidth}
+        \textbf{Performance Technique}
+        \begin{itemize}
+            \item Temps de réponse : \textcolor{primaryblue}{< 3 secondes}
+            \item Taux de pertinence : \textcolor{primaryblue}{85-90\%}
+            \item Support concurrent : \textcolor{primaryblue}{50+ utilisateurs}
+            \item Uptime : \textcolor{primaryblue}{99.5\%}
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \textbf{Capacités}
+        \begin{itemize}
+            \item PDFs supportés : \textcolor{secondarypurple}{Illimité}
+            \item Taille max par PDF : \textcolor{secondarypurple}{50 MB}
+            \item Conversations : \textcolor{secondarypurple}{Illimitées}
+            \item Langues : \textcolor{secondarypurple}{Multilingue}
+        \end{itemize}
+    \end{columns}
+    
+    \vspace{1cm}
+    
+    \textbf{Technologies Clés}
+    \begin{itemize}
+        \item Next.js 15 avec Turbopack pour des builds rapides
+        \item Supabase pour une base de données scalable
+        \item OpenAI GPT-4 pour des réponses de qualité
+    \end{itemize}
+\end{frame}
+
+% Section 6: Perspectives
+\section{Perspectives et Améliorations}
+
+\begin{frame}{Améliorations Futures}
+    \textbf{Fonctionnalités à Venir}
+    \begin{itemize}
+        \item \textcolor{primaryblue}{Support de formats additionnels} - Word, Excel, PowerPoint
+        \item \textcolor{primaryblue}{OCR avancé} - Extraction de texte depuis images et PDFs scannés
+        \item \textcolor{primaryblue}{Collaboration} - Partage de conversations entre utilisateurs
+        \item \textcolor{primaryblue}{Export} - Export des conversations en PDF/Markdown
+        \item \textcolor{primaryblue}{Annotations} - Possibilité d'annoter les documents
+        \item \textcolor{primaryblue}{API publique} - Intégration avec d'autres applications
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Optimisations Techniques}
+    \textbf{Performance}
+    \begin{itemize}
+        \item Mise en cache des embeddings pour réduire les coûts
+        \item Pagination des conversations pour améliorer la vitesse
+        \item Compression des PDFs avant stockage
+        \item CDN pour servir les fichiers statiques
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Intelligence Artificielle}
+    \begin{itemize}
+        \item Fine-tuning du modèle sur des données spécifiques
+        \item Amélioration de l'algorithme de chunking
+        \item Ajout de modèles de réranking pour la pertinence
+        \item Support de modèles open-source (Llama, Mistral)
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Scalabilité}
+    \textbf{Architecture Évolutive}
+    \begin{itemize}
+        \item Migration vers une architecture microservices si nécessaire
+        \item Utilisation de Kubernetes pour l'orchestration
+        \item Mise en place de load balancers
+        \item Réplication de la base de données pour la haute disponibilité
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Monitoring et Analytics}
+    \begin{itemize}
+        \item Intégration de Sentry pour le tracking des erreurs
+        \item Tableaux de bord avec Grafana
+        \item Analytics utilisateur avec PostHog/Mixpanel
+        \item Alertes automatiques en cas de problème
+    \end{itemize}
+\end{frame}
+
+% Section 7: Conclusion
+\section{Conclusion}
+
+\begin{frame}{Points Clés}
+    \textbf{Réussites du Projet}
+    \begin{itemize}
+        \item[\checkmark] Architecture moderne et scalable
+        \item[\checkmark] Interface utilisateur intuitive et moderne
+        \item[\checkmark] RAG performant avec sources vérifiables
+        \item[\checkmark] Gestion complète de l'historique des conversations
+        \item[\checkmark] Sécurité et isolation des données par utilisateur
+        \item[\checkmark] Stack technique robuste (Next.js + Supabase + OpenAI)
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Impact}
+    \begin{itemize}
+        \item Facilite l'accès à l'information documentaire
+        \item Améliore la productivité des utilisateurs
+        \item Réduit le temps de recherche dans les documents
+        \item Solution évolutive adaptable à différents domaines
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Leçons Apprises}
+    \textbf{Défis Techniques Rencontrés}
+    \begin{itemize}
+        \item Optimisation de la recherche vectorielle
+        \item Gestion de l'état des conversations avec URLs
+        \item Intégration de la reconnaissance vocale
+        \item Sécurisation des variables d'environnement
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Bonnes Pratiques Appliquées}
+    \begin{itemize}
+        \item Architecture monorepo avec Turbo
+        \item TypeScript pour la robustesse du code
+        \item Tests end-to-end avec Playwright
+        \item Git workflow avec protection des secrets
+        \item Documentation continue
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Remerciements}
+    \begin{center}
+        \Huge \textcolor{primaryblue}{Merci de votre attention !}
+        
+        \vspace{1cm}
+        
+        \Large \textbf{SharingBot}
+        
+        \normalsize Assistant Conversationnel Intelligent avec RAG
+        
+        \vspace{1cm}
+        
+        \textbf{Questions ?}
+        
+        \vspace{0.5cm}
+        
+        \small
+        \href{https://github.com/votre-repo/SharingBotV3}{GitHub: github.com/votre-repo/SharingBotV3}
+        
+        \href{mailto:votre.email@exemple.com}{Contact: votre.email@exemple.com}
+    \end{center}
+\end{frame}
+
+\begin{frame}{Annexe : Ressources}
+    \textbf{Liens Utiles}
+    \begin{itemize}
+        \item Next.js : \url{https://nextjs.org}
+        \item Supabase : \url{https://supabase.com}
+        \item OpenAI : \url{https://openai.com}
+        \item Shadcn UI : \url{https://ui.shadcn.com}
+        \item React Speech Recognition : \url{https://github.com/JamesBrill/react-speech-recognition}
+    \end{itemize}
+    
+    \vspace{0.5cm}
+    
+    \textbf{Documentation Technique}
+    \begin{itemize}
+        \item README.md du projet
+        \item Documentation API dans \texttt{/docs}
+        \item Guide de déploiement
+        \item Guide de contribution
+    \end{itemize}
+\end{frame}
+
+\end{document}

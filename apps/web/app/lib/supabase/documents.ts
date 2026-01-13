@@ -1,6 +1,9 @@
 import { getSupabaseBrowserClient } from '@kit/supabase/browser-client';
 import type { Document } from '../../types/database.types';
 
+// Re-export Document type for use in other components
+export type { Document };
+
 function getClient() {
   return getSupabaseBrowserClient<any>();
 }

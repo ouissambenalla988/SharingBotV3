@@ -36,8 +36,8 @@ import {
 import {
   uploadDocument,
   getAllAccessibleDocuments,
-  type Document,
 } from '../../lib/supabase/documents';
+import type { Document } from '../../types/database.types';
 
 // --- Sheet Mock (à remplacer par Shadcn Sheet si besoin) ---
 
@@ -173,11 +173,38 @@ export function DashBoardChat() {
         setAvailableDocuments(docs);
         console.log('Loaded documents from Supabase:', docs);
 
+        // Vérifier si une conversation est spécifiée dans l'URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const convIdFromUrl = urlParams.get('conv');
+
         // Get or create conversation
         const conversations = await getConversations(userId);
         let convId: string;
 
-        if (conversations.length === 0) {
+        if (convIdFromUrl && conversations.find(c => c.id === convIdFromUrl)) {
+          // Utiliser la conversation de l'URL
+          convId = convIdFromUrl;
+          setCurrentConversationId(convId);
+          console.log('📂 Chargement conversation depuis URL:', convId);
+
+          // Load messages from this conversation
+          const previousMessages = await getMessages(convId);
+          if (previousMessages.length > 0) {
+            const loadedMessages: Message[] = previousMessages.map((msg, idx) => ({
+              id: idx + 1,
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+            }));
+            setMessages(loadedMessages);
+          } else {
+            // Aucun message, afficher message de bienvenue
+            setMessages([{
+              id: 1,
+              role: "assistant",
+              content: "Hello! I am SharingBot AI assistant. How can I help you today?",
+            }]);
+          }
+        } else if (conversations.length === 0) {
           // Create first conversation
           const newConv = await createConversation(userId, 'Chat Session');
           if (newConv) {
@@ -394,12 +421,21 @@ export function DashBoardChat() {
     // Si des nouveaux PDFs sont attachés, les utiliser
     if (pdfFiles.length > 0) {
       console.log('📁 Utilisation des nouveaux PDFs attachés:', pdfFiles.length);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      
       pdfFiles.forEach((f) => {
         if (f.file) {
           formData.append('files', f.file, f.name);
           console.log('📎 Ajout fichier:', f.name);
-          // Note: pour les nouveaux PDFs, on n'a pas encore d'URL publique
-          // L'URL sera disponible après l'upload dans Supabase
+          
+          // Tracker les nouveaux PDFs avec leurs URLs locales (blob URLs)
+          if (f.url) {
+            sentPdfs.push({
+              name: f.name,
+              url: f.url // blob URL ou URL Supabase si disponible
+            });
+            console.log('📌 Nouveau PDF tracké:', f.name, f.url);
+          }
         }
       });
     } 
@@ -431,17 +467,13 @@ export function DashBoardChat() {
             formData.append('files', file, doc.filename);
             console.log('✅ PDF ajouté:', doc.filename);
             
-            // Tracker l'URL publique du PDF SEULEMENT si le document appartient à l'utilisateur
-            // Ne pas afficher les PDFs globaux dans les sources pour éviter la confusion
-            if (doc.user_id === userId) {
-              sentPdfs.push({
-                name: doc.filename,
-                url: fileUrl
-              });
-              console.log('📌 PDF tracké pour affichage:', doc.filename);
-            } else {
-              console.log('⏭️ PDF global ignoré pour affichage:', doc.filename);
-            }
+            // Tracker TOUS les PDFs avec leurs URLs, pas seulement ceux de l'utilisateur
+            // Car ils sont tous utilisés dans la recherche RAG
+            sentPdfs.push({
+              name: doc.filename,
+              url: fileUrl
+            });
+            console.log('📌 PDF tracké pour affichage:', doc.filename, 'User:', doc.user_id === userId ? 'moi' : 'autre');
           } else {
             console.error('❌ Erreur téléchargement PDF:', doc.filename, fileResponse.status);
           }
@@ -510,7 +542,9 @@ export function DashBoardChat() {
     console.log('💬 Message bot créé:', {
       id: botMessage.id,
       contentLength: botMessage.content.length,
-      sourcesCount: botMessage.sources?.length || 0
+      sourcesCount: botMessage.sources?.length || 0,
+      pdfMetadataCount: botMessage.pdfMetadata?.length || 0,
+      pdfMetadata: botMessage.pdfMetadata
     });
 
     // 9️⃣ Afficher la réponse dans le chat
@@ -712,7 +746,9 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           try { textAreaRef.current?.focus(); } catch (e) { console.warn('focus textarea failed', e); }
         });
       } else if (f.name.toLowerCase().endsWith('.pdf')) {
-        // try to dynamically import pdfjs and render pages
+        // PDF preview temporarily disabled - pdfjs module not installed
+        // To enable: pnpm add pdfjs-dist
+        /*
         try {
           const pdfjs = await import('pdfjs-dist/legacy/build/pdf');
           // try to set a worker src if pdfjs exposes a version (best-effort)
@@ -764,6 +800,9 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           console.error('PDF OCR requires pdfjs-dist. Error:', e);
           setError('OCR PDF nécessite la dépendance `pdfjs-dist`. Veuillez l\'installer.');
         }
+        */
+        // Fallback message for PDF files when pdfjs is not installed
+        setError('Aperçu PDF temporairement désactivé. Installez pdfjs-dist pour activer cette fonctionnalité.');
       } else {
         setError('Type de fichier non supporté pour OCR');
       }
@@ -888,6 +927,25 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
+  // Fonction pour créer une nouvelle conversation
+  const handleNewConversation = async () => {
+    if (!userId) return;
+
+    try {
+      console.log('🆕 Création d\'une nouvelle conversation...');
+      const newConv = await createConversation(userId, `Chat ${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`);
+      
+      if (newConv) {
+        console.log('✅ Nouvelle conversation créée:', newConv.id);
+        // Rediriger vers la nouvelle conversation
+        window.location.href = `/home?conv=${newConv.id}`;
+      }
+    } catch (error) {
+      console.error('❌ Erreur création conversation:', error);
+      setError('Erreur lors de la création de la conversation');
+    }
+  };
+
   const MessageBubble = ({ message }: { message: Message }) => (
     <div
       className={`flex gap-3 items-start ${
@@ -934,6 +992,28 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
             {message.content}
           </p>
 
+          {/* Afficher tous les PDFs utilisés pour cette réponse - TOUJOURS afficher si présent */}
+          {message.pdfMetadata && message.pdfMetadata.length > 0 && (
+            <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">📚 PDFs utilisés:</span>
+                {message.pdfMetadata.map((pdf, idx) => (
+                  <a
+                    key={idx}
+                    href={pdf.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+                    title={`Ouvrir ${pdf.name}`}
+                  >
+                    <FileIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
+                    <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">{pdf.name}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {message.sources && message.sources.length > 0 && (
             <>
               <div className="mt-2 space-y-2">
@@ -978,28 +1058,6 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </div>
                 ))}
               </div>
-
-              {/* Afficher tous les PDFs utilisés pour cette réponse */}
-              {message.pdfMetadata && message.pdfMetadata.length > 0 && (
-                <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">📚 Sources PDFs:</span>
-                    {message.pdfMetadata.map((pdf, idx) => (
-                      <a
-                        key={idx}
-                        href={pdf.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
-                        title={`Ouvrir ${pdf.name}`}
-                      >
-                        <FileIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
-                        <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">{pdf.name}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>

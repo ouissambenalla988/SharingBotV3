@@ -5,9 +5,8 @@ import { DashBoardChat } from './_components/dashBoard-chat';
 export default function HomePage() {
   return (
     <>
-
       <PageBody>
-      <PageHeader description={'Your SaaS at a glance'} />
+        <PageHeader description={'Assistant intelligent avec RAG'} />
         <DashBoardChat />
       </PageBody>
     </>
